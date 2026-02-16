@@ -19,12 +19,29 @@ library(reshape2) # For melting data frames from wide to long format
 # Output: ggplot object showing Reibergram
 # ---------------------------
 
-plot_reibergram <- function(patient_df) {
+plot_reibergram <- function(patient_df, color_by_group = FALSE, subset_type = "full") {
+  
+  # --- Filter data based on subset type ---
+  if (subset_type == "baseline" && "type" %in% colnames(patient_df)) {
+    patient_df <- patient_df[patient_df$type == "Baseline", ]
+    plot_title <- "IgG Reibergram - Baseline"
+  } else if (subset_type == "followup" && "type" %in% colnames(patient_df)) {
+    patient_df <- patient_df[patient_df$type == "Followup", ]
+    plot_title <- "IgG Reibergram - Followup"
+  } else {
+    plot_title <- "IgG Reibergram - Full Dataset"
+  }
   
   # --- Define Reibergram functions ---
   
   # Age for cohort-based cutoff. Using max age of the cohort as Reibergram cutoffs can be age-dependent.
   age <- max(patient_df$age, na.rm = TRUE)  # ignore NA ages
+  # If no age column, use default age of 40
+  if (is.na(age) || age == -Inf) {
+    age <- 40
+  }
+  
+  cat(sprintf("Using age %.1f years for QAlb cutoff calculation\n", age))
   
   # Create a finely spaced QAlb axis (x-axis of Reibergram)
   qalb <- seq(1e-5, 100e-3, length.out = 1000)  # avoids zero for log scale
@@ -74,6 +91,43 @@ plot_reibergram <- function(patient_df) {
   # QIgG = CSF IgG / Serum IgG (reflects IgG intrathecal synthesis)
   patient_df$QIgG <- patient_df$csf_igg / patient_df$s_igg
   
+  # --- Identify outliers (points above Qlim curve OR QAlb above cutoff) ---
+  # For each patient point, calculate expected Qlim at their QAlb
+  patient_df$qlim_expected <- 0.93 * sqrt((patient_df$QAlb ^ 2) + 6e-6) - 1.7e-3
+  patient_df$is_outlier <- (patient_df$QIgG > patient_df$qlim_expected) | (patient_df$QAlb > qalb_cutoff)
+  
+  cat(sprintf("QAlb cutoff for blood-CSF barrier: %.3f (×10^-3: %.1f)\n", qalb_cutoff, qalb_cutoff*1e3))
+  cat(sprintf("Found %d outlier(s)\n", sum(patient_df$is_outlier)))
+  
+  # Create a subset for labeling (only outliers)
+  outliers_df <- patient_df[patient_df$is_outlier, ]
+  
+  # Add jitter to label positions to avoid overlap
+  if (nrow(outliers_df) > 0) {
+    set.seed(42)  # for reproducibility
+    # Use multiplicative jitter for log scale - multiply by random factor close to 1
+    outliers_df$label_x <- outliers_df$QAlb * (1 + rnorm(nrow(outliers_df), 0, 0.15))
+    outliers_df$label_y <- outliers_df$QIgG * (1 + rnorm(nrow(outliers_df), 0.2, 0.15))
+    # Ensure labels stay within reasonable bounds
+    outliers_df$label_x <- pmax(outliers_df$label_x, 2e-3)
+    outliers_df$label_y <- pmax(outliers_df$label_y, 0.5e-3)
+  }
+  
+  # --- Determine colors for groups ---
+  if (color_by_group && "group" %in% colnames(patient_df)) {
+    point_colors <- c("Case" = "#D55E00", "Control" = "#56B4E9")  # Reddish for cases, blue for controls
+    patient_df$plot_color <- patient_df$group
+    if (nrow(outliers_df) > 0) {
+      outliers_df$plot_color <- outliers_df$group
+    }
+  } else {
+    patient_df$plot_color <- "All"
+    if (nrow(outliers_df) > 0) {
+      outliers_df$plot_color <- "All"
+    }
+    point_colors <- c("All" = "black")
+  }
+  
   # --- Plot ---
   p <- ggplot(df_long, aes(x = qalb, y = qval, color = curve, linetype = linetype)) +
     
@@ -105,14 +159,6 @@ plot_reibergram <- function(patient_df) {
     # Limit visible plot region
     coord_cartesian(xlim = c(2e-3, 100e-3), ylim = c(0.5e-3, 100e-3)) +
     
-    # Add patient points (black dots)
-    geom_point(data = patient_df, aes(x = QAlb, y = QIgG),
-               inherit.aes = FALSE, size = 2, color = "black") +
-    
-    # Add patient IDs as text labels near the points
-    geom_text(data = patient_df, aes(x = QAlb, y = QIgG, label = patient_id),
-              inherit.aes = FALSE, nudge_y = 0.07, size = 3) +
-    
     # Minimal theme with some customizations
     theme_minimal(base_size = 12) +
     theme(panel.grid.minor = element_blank(),
@@ -124,7 +170,31 @@ plot_reibergram <- function(patient_df) {
     # Axis and title labels
     labs(x = expression(Q[Alb]~"(×10"^-3*")"),
          y = expression(Q[Ig]~"(×10"^-3*")"),
-         title = "IgG Reibergram")
+         title = plot_title)
+  
+  # Add patient points with colors based on group
+  if (color_by_group && "group" %in% colnames(patient_df)) {
+    p <- p + 
+      geom_point(data = patient_df, aes(x = QAlb, y = QIgG, color = plot_color),
+                 inherit.aes = FALSE, size = 2.5) +
+      scale_color_manual(
+        values = c(curve_colors, point_colors),
+        breaks = names(point_colors),
+        labels = names(point_colors),
+        name = "Group"
+      )
+  } else {
+    p <- p + 
+      geom_point(data = patient_df, aes(x = QAlb, y = QIgG),
+                 inherit.aes = FALSE, size = 2, color = "black")
+  }
+  
+  # Add labels only for outlier points with jitter
+  if (nrow(outliers_df) > 0) {
+    p <- p + 
+      geom_text(data = outliers_df, aes(x = label_x, y = label_y, label = patient_id),
+                inherit.aes = FALSE, size = 3, fontface = "bold")
+  }
   
   return(p)  # return ggplot object
 }

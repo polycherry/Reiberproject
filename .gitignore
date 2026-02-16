@@ -1,0 +1,36 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Excel files
+*.xlsx
+*.xls
+*.xlsm
+
+# CSV files
+*.csv
+
+# Data files
+*.dat
+*.data
+
+# Images and plots
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+*.tiff
+
+# macOS
+.DS_Store
+
+# Output directories
+plots/
+figures/
+output/
+results/
+
+# Project directories
+data/
