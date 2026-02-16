@@ -1,4 +1,3 @@
-wd = "/Volumes/lab-schmackk/home/shared/rawData/009_antibodyAssays/AbAs001_IRIS/AbAs001_06_CSF_reiberanalysis/Reiber project"
 source("scripts/igg_reiberplot.r")
 
 # Load required library
@@ -37,4 +36,5 @@ dfa <- dfa[complete.cases(dfa[, c("csf_igg", "s_igg", "csf_alb", "s_alb")]), ]
 
 # Plot with different colors for Case and Control
 # subset_type can be: "full", "baseline", or "followup"
-plot_reibergram(dfa, color_by_group = TRUE, subset_type = "baseline")
+reiber = plot_reibergram(dfa, color_by_group = TRUE, subset_type = "baseline")
+ggsave("results/results_reiber.pdf", plot = reiber)
