@@ -182,4 +182,80 @@ ggsave("results/plot_composite_all_comparisons.png", plot = p_composite,
        width = 10, height = 6, dpi = 300)
 cat("Composite plot saved: results/plot_composite_all_comparisons.png\n")
 
+# --- Create Summary Table ---
+cat("\n=== Creating Summary Table ===\n")
+
+# Variables to summarize
+variables <- c("CSF_Protein", "CSF_IgG", "Serum_IgG", "CSF_Albumin", 
+               "Serum_Albumin", "Age", "IgG_Index", "Albumin_Index", "IgG_Quotient")
+variable_labels <- c("CSF Protein (mg/L)", "CSF IgG (mg/L)", "Serum IgG (g/L)", 
+                     "CSF Albumin (mg/L)", "Serum Albumin (g/L)", "Age (years)",
+                     "IgG Index", "Albumin Quotient (QAlb)", "IgG Quotient (QIgG)")
+
+# Create summary table
+summary_table <- data.frame(
+  Parameter = character(),
+  Case_Mean_SD = character(),
+  Control_Mean_SD = character(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (i in seq_along(variables)) {
+  var <- variables[i]
+  
+  # Extract data
+  case_data <- df_baseline[df_baseline$Group == "Case", var]
+  control_data <- df_baseline[df_baseline$Group == "Control", var]
+  
+  # Remove NA
+  case_data <- case_data[!is.na(case_data)]
+  control_data <- control_data[!is.na(control_data)]
+  
+  if (length(case_data) > 0 && length(control_data) > 0) {
+    # Calculate mean and SD
+    case_mean <- mean(case_data)
+    case_sd <- sd(case_data)
+    control_mean <- mean(control_data)
+    control_sd <- sd(control_data)
+    
+    # Wilcoxon test
+    test_result <- wilcox.test(case_data, control_data)
+    
+    # Add to table
+    summary_table <- rbind(summary_table, data.frame(
+      Parameter = variable_labels[i],
+      Case_Mean_SD = sprintf("%.3f (%.3f)", case_mean, case_sd),
+      Control_Mean_SD = sprintf("%.3f (%.3f)", control_mean, control_sd),
+      P_Value = test_result$p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# Add significance stars
+summary_table$Significance <- ifelse(summary_table$P_Value < 0.001, "***",
+                                    ifelse(summary_table$P_Value < 0.01, "**",
+                                          ifelse(summary_table$P_Value < 0.05, "*", "")))
+
+# Format p-value column
+summary_table$P_Value_Formatted <- sprintf("%.4f", summary_table$P_Value)
+
+# Final table for display
+final_table <- summary_table[, c("Parameter", "Case_Mean_SD", "Control_Mean_SD", "P_Value_Formatted", "Significance")]
+colnames(final_table) <- c("Parameter", "Case Mean (SD)", "Control Mean (SD)", "P-Value", "Sig.")
+
+# Print table
+cat("\n=== CASE vs CONTROL COMPARISON (BASELINE ONLY) ===\n")
+cat(sprintf("Case n = %d, Control n = %d\n\n", 
+            sum(df_baseline$Group == "Case"), 
+            sum(df_baseline$Group == "Control")))
+print(final_table, row.names = FALSE)
+cat("\nStatistical test: Wilcoxon rank-sum test (Mann-Whitney U)\n")
+cat("* p < 0.05, ** p < 0.01, *** p < 0.001\n")
+
+# Save to CSV
+write.csv(final_table, "results/case_control_comparison_summary.csv", row.names = FALSE)
+cat("\nSummary table saved to: results/case_control_comparison_summary.csv\n")
+
 cat("\n=== ANALYSIS COMPLETE ===\n")

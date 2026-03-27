@@ -172,11 +172,12 @@ plot_reibergram <- function(patient_df, color_by_group = FALSE, subset_type = "f
          y = expression(Q[Ig]~"(×10"^-3*")"),
          title = plot_title)
   
-  # Add patient points with colors based on group
+  # Add patient points with colors based on group (with jitter)
   if (color_by_group && "group" %in% colnames(patient_df)) {
     p <- p + 
       geom_point(data = patient_df, aes(x = QAlb, y = QIgG, color = plot_color),
-                 inherit.aes = FALSE, size = 2.5) +
+                 inherit.aes = FALSE, size = 2.5, 
+                 position = position_jitter(width = 0.02, height = 0.02, seed = 42)) +
       scale_color_manual(
         values = c(curve_colors, point_colors),
         breaks = names(point_colors),
@@ -186,14 +187,21 @@ plot_reibergram <- function(patient_df, color_by_group = FALSE, subset_type = "f
   } else {
     p <- p + 
       geom_point(data = patient_df, aes(x = QAlb, y = QIgG),
-                 inherit.aes = FALSE, size = 2, color = "black")
+                 inherit.aes = FALSE, size = 2, color = "black",
+                 position = position_jitter(width = 0.02, height = 0.02, seed = 42))
   }
   
-  # Add labels only for outlier points with jitter
+  # Add labels only for outlier points with jitter (color matched to group)
   if (nrow(outliers_df) > 0) {
-    p <- p + 
-      geom_text(data = outliers_df, aes(x = label_x, y = label_y, label = patient_id),
-                inherit.aes = FALSE, size = 3, fontface = "bold")
+    if (color_by_group && "group" %in% colnames(outliers_df)) {
+      p <- p + 
+        geom_text(data = outliers_df, aes(x = label_x, y = label_y, label = patient_id, color = plot_color),
+                  inherit.aes = FALSE, size = 3, fontface = "bold")
+    } else {
+      p <- p + 
+        geom_text(data = outliers_df, aes(x = label_x, y = label_y, label = patient_id),
+                  inherit.aes = FALSE, size = 3, fontface = "bold", color = "black")
+    }
   }
   
   return(p)  # return ggplot object
